@@ -57,6 +57,32 @@
             text-align: center;
             font-weight: bold;
             color: white;
+            transition: background-color 0.3s, border-color 0.3s;
+        }
+
+        .square.overloaded {
+            background-color: #e74c3c;
+            border-color: #c0392b;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .error-display {
+            text-align: center;
+            margin-top: 10px;
+            font-family: Arial, sans-serif;
+            font-size: 16px;
+            font-weight: bold;
+            color: #e74c3c;
+            visibility: hidden;
+        }
+
+        .error-display.visible {
+            visibility: visible;
         }
 
         .line-container {
@@ -184,11 +210,11 @@
         }
 
         .direct-line-container {
-            display: none;
+            display: none !important;
         }
 
         .direct-line-container.visible {
-            display: flex;
+            display: flex !important;
         }
 
         /* Stacked backend styles */
@@ -308,14 +334,20 @@
         <div class="total-display" id="total-display">
             Total: <span class="total-value">34ms</span> <span class="total-secondary">(hit) / 44ms (miss)</span>
         </div>
+        <div class="error-display" id="error-display">
+            Errors: <span id="error-rate">0%</span> of requests failing
+        </div>
         <div class="container">
             <div class="square-container">
                 <span class="processing-label">&nbsp;</span>
                 <div class="square">Web browser</div>
             </div>
-            <div class="line-container">
+            <div class="multi-line-container" id="browser-lb-line">
                 <span class="line-label">25ms</span>
-                <div class="line"></div>
+                <div class="lines-wrapper" id="browser-lb-lines">
+                    <div class="line"></div>
+                </div>
+                <span class="connection-count" id="browser-lb-count">1 conn</span>
             </div>
             <div class="square-container">
                 <span class="processing-label">1ms</span>
@@ -323,10 +355,10 @@
             </div>
             <div class="multi-line-container" id="lb-backend-line">
                 <span class="line-label">1ms</span>
-                <div class="lines-wrapper" id="lines-wrapper">
+                <div class="lines-wrapper" id="lb-backend-lines">
                     <div class="line"></div>
                 </div>
-                <span class="connection-count" id="connection-count">1 conn</span>
+                <span class="connection-count" id="lb-backend-count">1 conn</span>
             </div>
             <div class="square-container" id="backend-container">
                 <span class="load-meter-label">Load: <span id="load-percent">1%</span> <span id="load-per-instance">(per instance)</span></span>
@@ -339,14 +371,20 @@
                     <span class="instances-badge" id="instances-badge">x1</span>
                 </div>
             </div>
-            <div class="line-container direct-line-container" id="direct-line">
+            <div class="multi-line-container direct-line-container" id="direct-line">
                 <span class="line-label">10ms</span>
-                <div class="line"></div>
+                <div class="lines-wrapper" id="direct-db-lines">
+                    <div class="line"></div>
+                </div>
+                <span class="connection-count" id="direct-db-count">1 conn</span>
             </div>
             <div class="cache-group" id="cache-group">
-                <div class="line-container">
+                <div class="multi-line-container" id="backend-cache-line">
                     <span class="line-label">2ms</span>
-                    <div class="line"></div>
+                    <div class="lines-wrapper" id="backend-cache-lines">
+                        <div class="line"></div>
+                    </div>
+                    <span class="connection-count" id="backend-cache-count">1 conn</span>
                 </div>
                 <div class="square-container" id="cache-container">
                     <span class="load-meter-label">Hit rate: <span id="cache-hit-rate">80%</span></span>
@@ -356,10 +394,12 @@
                     <span class="processing-label">&nbsp;</span>
                     <div class="square">Cache</div>
                 </div>
-                <div class="line-container">
+                <div class="multi-line-container" id="cache-db-line">
                     <span class="line-label">10ms</span>
-                    <div class="line"></div>
-                    <span class="line-note">only on cache miss</span>
+                    <div class="lines-wrapper" id="cache-db-lines">
+                        <div class="line"></div>
+                    </div>
+                    <span class="connection-count" id="cache-db-count">1 conn</span>
                 </div>
             </div>
             <div class="square-container">
@@ -407,8 +447,6 @@
         const totalDisplay = document.getElementById('total-display');
         const connectionsSlider = document.getElementById('connections-slider');
         const connectionsValue = document.getElementById('connections-value');
-        const linesWrapper = document.getElementById('lines-wrapper');
-        const connectionCount = document.getElementById('connection-count');
         const loadMeterFill = document.getElementById('load-meter-fill');
         const loadPercent = document.getElementById('load-percent');
         const cacheHitRateSlider = document.getElementById('cache-hit-rate-slider');
@@ -423,6 +461,20 @@
         const loadPerInstance = document.getElementById('load-per-instance');
         const capacitySlider = document.getElementById('capacity-slider');
         const capacityValue = document.getElementById('capacity-value');
+        const errorDisplay = document.getElementById('error-display');
+        const errorRate = document.getElementById('error-rate');
+
+        // Line segment elements
+        const browserLbLines = document.getElementById('browser-lb-lines');
+        const browserLbCount = document.getElementById('browser-lb-count');
+        const lbBackendLines = document.getElementById('lb-backend-lines');
+        const lbBackendCount = document.getElementById('lb-backend-count');
+        const backendCacheLines = document.getElementById('backend-cache-lines');
+        const backendCacheCount = document.getElementById('backend-cache-count');
+        const cacheDbLines = document.getElementById('cache-db-lines');
+        const cacheDbCount = document.getElementById('cache-db-count');
+        const directDbLines = document.getElementById('direct-db-lines');
+        const directDbCount = document.getElementById('direct-db-count');
 
         function updateTotal() {
             if (cacheToggle.checked) {
@@ -448,8 +500,8 @@
                 cacheMeterFill.style.backgroundColor = '#e74c3c'; // Red
             }
 
-            // Recalculate backend load
-            updateLoad();
+            // Recalculate connections (updates cache miss lines) and load
+            updateConnections(parseInt(connectionsSlider.value));
         }
 
         function updateInstances(count) {
@@ -471,19 +523,48 @@
             updateLoad();
         }
 
+        function updateLineSegment(linesWrapper, countElement, connectionCount) {
+            // Update connection count text
+            countElement.textContent = connectionCount + ' conn';
+
+            // Update visual lines (show up to 5 visual lines)
+            const visualLines = Math.min(Math.ceil(connectionCount / 20), 5);
+            if (visualLines === 0) {
+                linesWrapper.innerHTML = '<div class="line" style="opacity: 0.3;"></div>';
+            } else {
+                linesWrapper.innerHTML = '';
+                for (let i = 0; i < visualLines; i++) {
+                    const line = document.createElement('div');
+                    line.className = 'line';
+                    linesWrapper.appendChild(line);
+                }
+            }
+        }
+
         function updateConnections(count) {
             // Update the displayed value
             connectionsValue.textContent = count;
-            connectionCount.textContent = count + ' conn';
 
-            // Update the lines (show up to 5 visual lines)
-            const visualLines = Math.min(Math.ceil(count / 20), 5);
-            linesWrapper.innerHTML = '';
-            for (let i = 0; i < visualLines; i++) {
-                const line = document.createElement('div');
-                line.className = 'line';
-                linesWrapper.appendChild(line);
+            const cacheHitRate = parseInt(cacheHitRateSlider.value) / 100;
+            const cacheMissRate = 1 - cacheHitRate;
+
+            // Browser → Load Balancer: all connections
+            updateLineSegment(browserLbLines, browserLbCount, count);
+
+            // Load Balancer → Backend: all connections
+            updateLineSegment(lbBackendLines, lbBackendCount, count);
+
+            if (cacheToggle.checked) {
+                // Backend → Cache: all connections
+                updateLineSegment(backendCacheLines, backendCacheCount, count);
+
+                // Cache → Database: only cache misses
+                const cacheMissConnections = Math.round(count * cacheMissRate);
+                updateLineSegment(cacheDbLines, cacheDbCount, cacheMissConnections);
             }
+
+            // Backend → Database (direct, when cache is off): all connections
+            updateLineSegment(directDbLines, directDbCount, count);
 
             // Recalculate load
             updateLoad();
@@ -513,18 +594,49 @@
             }
 
             // Total capacity = server capacity * number of instances
-            // Load per instance = effective connections / instances / server capacity * 100
             const totalCapacity = serverCapacity * instances;
-            let loadPercentage = Math.min(100, Math.round((effectiveConnections / totalCapacity) * 100));
+            const actualLoadPercentage = Math.round((effectiveConnections / totalCapacity) * 100);
+            const displayLoadPercentage = Math.min(100, actualLoadPercentage);
+            const isOverloaded = actualLoadPercentage > 100;
 
-            loadMeterFill.style.width = loadPercentage + '%';
-            loadPercent.textContent = loadPercentage + '%';
+            loadMeterFill.style.width = displayLoadPercentage + '%';
+            loadPercent.textContent = actualLoadPercentage + '%';
             loadPerInstance.textContent = instances > 1 ? '(per instance)' : '';
 
+            // Get all backend squares
+            const backendSquares = backendStack.querySelectorAll('.square');
+
+            if (isOverloaded) {
+                // Calculate error rate: percentage of requests that fail
+                // If load is 150%, then 50/150 = 33% of requests fail
+                const errorPercentage = Math.round(((actualLoadPercentage - 100) / actualLoadPercentage) * 100);
+
+                // Show overload state
+                backendSquares.forEach(sq => sq.classList.add('overloaded'));
+                backendSquares.forEach(sq => sq.textContent = 'OVERLOADED');
+
+                // Show error display
+                errorDisplay.classList.add('visible');
+                errorRate.textContent = errorPercentage + '%';
+
+                // Update total display to show timeout
+                totalDisplay.innerHTML = 'Total: <span class="total-value" style="color: #e74c3c;">TIMEOUT</span> <span class="total-secondary">(server overloaded)</span>';
+            } else {
+                // Normal state
+                backendSquares.forEach(sq => sq.classList.remove('overloaded'));
+                backendSquares.forEach(sq => sq.textContent = 'Backend');
+
+                // Hide error display
+                errorDisplay.classList.remove('visible');
+
+                // Restore normal total display
+                updateTotal();
+            }
+
             // Update load meter color based on percentage
-            if (loadPercentage < 50) {
+            if (actualLoadPercentage < 50) {
                 loadMeterFill.style.backgroundColor = '#27ae60'; // Green
-            } else if (loadPercentage < 80) {
+            } else if (actualLoadPercentage < 80) {
                 loadMeterFill.style.backgroundColor = '#f39c12'; // Yellow/Orange
             } else {
                 loadMeterFill.style.backgroundColor = '#e74c3c'; // Red
