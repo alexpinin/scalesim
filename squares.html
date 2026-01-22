@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connected Squares</title>
+    <style>
+        body {
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #f0f0f0;
+        }
+
+        .main-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .total-display {
+            text-align: center;
+            margin-bottom: 20px;
+            font-family: Arial, sans-serif;
+            font-size: 18px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
+        .total-display .total-value {
+            color: #e74c3c;
+        }
+
+        .total-display .total-secondary {
+            font-size: 14px;
+            font-weight: normal;
+            color: #7f8c8d;
+        }
+
+        .container {
+            display: flex;
+            align-items: center;
+        }
+
+        .square {
+            width: 100px;
+            height: 100px;
+            background-color: #3498db;
+            border: 2px solid #2980b9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: Arial, sans-serif;
+            font-size: 16px;
+            text-align: center;
+            font-weight: bold;
+            color: white;
+        }
+
+        .line-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .line-label {
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            color: #2c3e50;
+            margin-bottom: 5px;
+        }
+
+        .line-note {
+            font-family: Arial, sans-serif;
+            font-size: 10px;
+            color: #7f8c8d;
+            font-style: italic;
+            margin-top: 5px;
+            text-align: center;
+            max-width: 100px;
+        }
+
+        .line {
+            width: 100px;
+            height: 4px;
+            background-color: #2c3e50;
+        }
+
+        .control-panel {
+            margin-top: 40px;
+            padding: 20px;
+            background-color: #fff;
+            border: 2px solid #bdc3c7;
+            border-radius: 8px;
+            font-family: Arial, sans-serif;
+        }
+
+        .control-panel h3 {
+            margin: 0 0 15px 0;
+            color: #2c3e50;
+        }
+
+        .switch-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .switch-label {
+            font-size: 14px;
+            color: #34495e;
+        }
+
+        .switch {
+            position: relative;
+            width: 50px;
+            height: 26px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: 0.3s;
+            border-radius: 26px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #3498db;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(24px);
+        }
+
+        .cache-group {
+            display: flex;
+            align-items: center;
+        }
+
+        .cache-group.hidden {
+            display: none;
+        }
+
+        .direct-line-container {
+            display: none;
+        }
+
+        .direct-line-container.visible {
+            display: flex;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-wrapper">
+        <div class="total-display" id="total-display">
+            Total: <span class="total-value">52ms</span> <span class="total-secondary">(hit) / 62ms (miss)</span>
+        </div>
+        <div class="container">
+            <div class="square">Web browser</div>
+            <div class="line-container">
+                <span class="line-label">50ms</span>
+                <div class="line"></div>
+            </div>
+            <div class="square">Backend</div>
+            <div class="line-container direct-line-container" id="direct-line">
+                <span class="line-label">10ms</span>
+                <div class="line"></div>
+            </div>
+            <div class="cache-group" id="cache-group">
+                <div class="line-container">
+                    <span class="line-label">2ms</span>
+                    <div class="line"></div>
+                </div>
+                <div class="square">Cache</div>
+                <div class="line-container">
+                    <span class="line-label">10ms</span>
+                    <div class="line"></div>
+                    <span class="line-note">only on cache miss</span>
+                </div>
+            </div>
+            <div class="square">Database</div>
+        </div>
+
+        <div class="control-panel">
+            <h3>Control Panel</h3>
+            <div class="switch-container">
+                <span class="switch-label">Cache</span>
+                <label class="switch">
+                    <input type="checkbox" id="cache-toggle" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const cacheToggle = document.getElementById('cache-toggle');
+        const cacheGroup = document.getElementById('cache-group');
+        const directLine = document.getElementById('direct-line');
+        const totalDisplay = document.getElementById('total-display');
+
+        function updateTotal() {
+            if (cacheToggle.checked) {
+                // Cache enabled: 50ms + 2ms = 52ms (hit), 50ms + 2ms + 10ms = 62ms (miss)
+                totalDisplay.innerHTML = 'Total: <span class="total-value">52ms</span> <span class="total-secondary">(hit) / 62ms (miss)</span>';
+            } else {
+                // No cache: 50ms + 10ms = 60ms
+                totalDisplay.innerHTML = 'Total: <span class="total-value">60ms</span>';
+            }
+        }
+
+        cacheToggle.addEventListener('change', function() {
+            if (this.checked) {
+                cacheGroup.classList.remove('hidden');
+                directLine.classList.remove('visible');
+            } else {
+                cacheGroup.classList.add('hidden');
+                directLine.classList.add('visible');
+            }
+            updateTotal();
+        });
+    </script>
+</body>
+</html>
