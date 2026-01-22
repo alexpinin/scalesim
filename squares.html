@@ -196,6 +196,7 @@
             position: relative;
             width: 100px;
             height: 100px;
+            align-self: flex-start;
         }
 
         .backend-stack .square {
@@ -378,7 +379,7 @@
             </div>
             <div class="slider-container">
                 <span class="slider-label">Concurrent connections:</span>
-                <input type="range" id="connections-slider" min="1" max="100" value="1">
+                <input type="range" id="connections-slider" min="1" max="1000" value="1">
                 <span class="slider-value" id="connections-value">1</span>
             </div>
             <div class="slider-container" id="cache-hit-rate-container">
@@ -390,6 +391,11 @@
                 <span class="slider-label">Backend instances:</span>
                 <input type="range" id="instances-slider" min="1" max="5" value="1">
                 <span class="slider-value" id="instances-value">1</span>
+            </div>
+            <div class="slider-container">
+                <span class="slider-label">Server capacity:</span>
+                <input type="range" id="capacity-slider" min="10" max="500" value="100" step="10">
+                <span class="slider-value" id="capacity-value">100 conn</span>
             </div>
         </div>
     </div>
@@ -415,6 +421,8 @@
         const instancesBadge = document.getElementById('instances-badge');
         const backendStack = document.getElementById('backend-stack');
         const loadPerInstance = document.getElementById('load-per-instance');
+        const capacitySlider = document.getElementById('capacity-slider');
+        const capacityValue = document.getElementById('capacity-value');
 
         function updateTotal() {
             if (cacheToggle.checked) {
@@ -481,25 +489,33 @@
             updateLoad();
         }
 
+        function updateCapacity(capacity) {
+            capacityValue.textContent = capacity + ' conn';
+            updateLoad();
+        }
+
         function updateLoad() {
             const connections = parseInt(connectionsSlider.value);
             const instances = parseInt(instancesSlider.value);
+            const serverCapacity = parseInt(capacitySlider.value);
 
-            // Calculate total load based on cache status and hit rate
-            let totalLoad;
+            // Calculate effective load based on cache status and hit rate
+            let effectiveConnections;
             if (cacheToggle.checked) {
                 const cacheHitRate = parseInt(cacheHitRateSlider.value) / 100;
                 // Cache hits = 20% load (light), cache misses = 100% load (heavy, needs DB)
                 // Formula: connections * (cacheHitRate * 0.2 + (1 - cacheHitRate) * 1.0)
                 // Simplified: connections * (1 - 0.8 * cacheHitRate)
-                totalLoad = connections * (1 - 0.8 * cacheHitRate);
+                effectiveConnections = connections * (1 - 0.8 * cacheHitRate);
             } else {
                 // No cache: every request hits DB, full load
-                totalLoad = connections;
+                effectiveConnections = connections;
             }
 
-            // Divide load by number of instances
-            let loadPercentage = Math.min(100, Math.round(totalLoad / instances));
+            // Total capacity = server capacity * number of instances
+            // Load per instance = effective connections / instances / server capacity * 100
+            const totalCapacity = serverCapacity * instances;
+            let loadPercentage = Math.min(100, Math.round((effectiveConnections / totalCapacity) * 100));
 
             loadMeterFill.style.width = loadPercentage + '%';
             loadPercent.textContent = loadPercentage + '%';
@@ -541,10 +557,15 @@
             updateInstances(parseInt(this.value));
         });
 
+        capacitySlider.addEventListener('input', function() {
+            updateCapacity(parseInt(this.value));
+        });
+
         // Initialize
         updateConnections(1);
         updateCacheHitRate(80);
         updateInstances(1);
+        updateCapacity(100);
     </script>
 </body>
 </html>
