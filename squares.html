@@ -191,6 +191,40 @@
             display: flex;
         }
 
+        /* Stacked backend styles */
+        .backend-stack {
+            position: relative;
+            width: 100px;
+            height: 100px;
+        }
+
+        .backend-stack .square {
+            position: absolute;
+            top: 0;
+            left: 0;
+            transition: transform 0.3s, opacity 0.3s;
+        }
+
+        .backend-stack .square:nth-child(1) { z-index: 5; }
+        .backend-stack .square:nth-child(2) { z-index: 4; transform: translate(6px, -6px); opacity: 0.85; }
+        .backend-stack .square:nth-child(3) { z-index: 3; transform: translate(12px, -12px); opacity: 0.7; }
+        .backend-stack .square:nth-child(4) { z-index: 2; transform: translate(18px, -18px); opacity: 0.55; }
+        .backend-stack .square:nth-child(5) { z-index: 1; transform: translate(24px, -24px); opacity: 0.4; }
+
+        .instances-badge {
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            background-color: #9b59b6;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            font-weight: bold;
+            padding: 2px 6px;
+            border-radius: 10px;
+            z-index: 10;
+        }
+
         /* Load meter styles */
         .load-meter {
             width: 100px;
@@ -235,8 +269,10 @@
             font-family: Arial, sans-serif;
             font-size: 10px;
             color: #e74c3c;
-            margin-top: 3px;
             font-weight: bold;
+            position: absolute;
+            top: 100%;
+            margin-top: 3px;
         }
 
         /* Slider styles */
@@ -292,12 +328,15 @@
                 <span class="connection-count" id="connection-count">1 conn</span>
             </div>
             <div class="square-container" id="backend-container">
-                <span class="load-meter-label">Load: <span id="load-percent">1%</span></span>
+                <span class="load-meter-label">Load: <span id="load-percent">1%</span> <span id="load-per-instance">(per instance)</span></span>
                 <div class="load-meter">
                     <div class="load-meter-fill" id="load-meter-fill"></div>
                 </div>
                 <span class="processing-label">5ms</span>
-                <div class="square">Backend</div>
+                <div class="backend-stack" id="backend-stack">
+                    <div class="square">Backend</div>
+                    <span class="instances-badge" id="instances-badge">x1</span>
+                </div>
             </div>
             <div class="line-container direct-line-container" id="direct-line">
                 <span class="line-label">10ms</span>
@@ -347,6 +386,11 @@
                 <input type="range" id="cache-hit-rate-slider" min="0" max="100" value="80">
                 <span class="slider-value" id="cache-hit-rate-value">80%</span>
             </div>
+            <div class="slider-container">
+                <span class="slider-label">Backend instances:</span>
+                <input type="range" id="instances-slider" min="1" max="5" value="1">
+                <span class="slider-value" id="instances-value">1</span>
+            </div>
         </div>
     </div>
 
@@ -366,6 +410,11 @@
         const cacheHitRateDisplay = document.getElementById('cache-hit-rate');
         const cacheMeterFill = document.getElementById('cache-meter-fill');
         const cacheHitRateContainer = document.getElementById('cache-hit-rate-container');
+        const instancesSlider = document.getElementById('instances-slider');
+        const instancesValue = document.getElementById('instances-value');
+        const instancesBadge = document.getElementById('instances-badge');
+        const backendStack = document.getElementById('backend-stack');
+        const loadPerInstance = document.getElementById('load-per-instance');
 
         function updateTotal() {
             if (cacheToggle.checked) {
@@ -392,7 +441,26 @@
             }
 
             // Recalculate backend load
-            updateConnections(parseInt(connectionsSlider.value));
+            updateLoad();
+        }
+
+        function updateInstances(count) {
+            instancesValue.textContent = count;
+            instancesBadge.textContent = 'x' + count;
+
+            // Update visual stack
+            const existingSquares = backendStack.querySelectorAll('.square');
+            existingSquares.forEach(sq => sq.remove());
+
+            for (let i = 0; i < count; i++) {
+                const square = document.createElement('div');
+                square.className = 'square';
+                square.textContent = 'Backend';
+                backendStack.insertBefore(square, instancesBadge);
+            }
+
+            // Recalculate load
+            updateLoad();
         }
 
         function updateConnections(count) {
@@ -409,20 +477,31 @@
                 linesWrapper.appendChild(line);
             }
 
-            // Calculate load based on cache status and hit rate
-            let loadPercentage;
+            // Recalculate load
+            updateLoad();
+        }
+
+        function updateLoad() {
+            const connections = parseInt(connectionsSlider.value);
+            const instances = parseInt(instancesSlider.value);
+
+            // Calculate total load based on cache status and hit rate
+            let totalLoad;
             if (cacheToggle.checked) {
                 const cacheHitRate = parseInt(cacheHitRateSlider.value) / 100;
                 // Higher cache hit rate = lower backend load
-                loadPercentage = Math.min(100, count * (1 - cacheHitRate * 0.7));
+                totalLoad = connections * (1 - cacheHitRate * 0.7);
             } else {
                 // No cache: full load
-                loadPercentage = count;
+                totalLoad = connections;
             }
 
-            loadPercentage = Math.round(loadPercentage);
+            // Divide load by number of instances
+            let loadPercentage = Math.min(100, Math.round(totalLoad / instances));
+
             loadMeterFill.style.width = loadPercentage + '%';
             loadPercent.textContent = loadPercentage + '%';
+            loadPerInstance.textContent = instances > 1 ? '(per instance)' : '';
 
             // Update load meter color based on percentage
             if (loadPercentage < 50) {
@@ -445,7 +524,7 @@
                 cacheHitRateContainer.style.display = 'none';
             }
             updateTotal();
-            updateConnections(parseInt(connectionsSlider.value));
+            updateLoad();
         });
 
         connectionsSlider.addEventListener('input', function() {
@@ -456,9 +535,14 @@
             updateCacheHitRate(parseInt(this.value));
         });
 
+        instancesSlider.addEventListener('input', function() {
+            updateInstances(parseInt(this.value));
+        });
+
         // Initialize
         updateConnections(1);
         updateCacheHitRate(80);
+        updateInstances(1);
     </script>
 </body>
 </html>
