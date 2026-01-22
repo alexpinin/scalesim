@@ -41,7 +41,7 @@
 
         .container {
             display: flex;
-            align-items: center;
+            align-items: flex-end;
         }
 
         .square {
@@ -63,6 +63,8 @@
             display: flex;
             flex-direction: column;
             align-items: center;
+            margin-bottom: 50px;
+            position: relative;
         }
 
         .line-label {
@@ -77,9 +79,24 @@
             font-size: 10px;
             color: #7f8c8d;
             font-style: italic;
-            margin-top: 5px;
             text-align: center;
             max-width: 100px;
+            position: absolute;
+            top: 100%;
+            margin-top: 5px;
+        }
+
+        .square-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .processing-label {
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            color: #27ae60;
+            margin-bottom: 5px;
         }
 
         .line {
@@ -159,7 +176,7 @@
 
         .cache-group {
             display: flex;
-            align-items: center;
+            align-items: flex-end;
         }
 
         .cache-group.hidden {
@@ -178,15 +195,29 @@
 <body>
     <div class="main-wrapper">
         <div class="total-display" id="total-display">
-            Total: <span class="total-value">52ms</span> <span class="total-secondary">(hit) / 62ms (miss)</span>
+            Total: <span class="total-value">34ms</span> <span class="total-secondary">(hit) / 44ms (miss)</span>
         </div>
         <div class="container">
-            <div class="square">Web browser</div>
+            <div class="square-container">
+                <span class="processing-label">&nbsp;</span>
+                <div class="square">Web browser</div>
+            </div>
             <div class="line-container">
-                <span class="line-label">50ms</span>
+                <span class="line-label">25ms</span>
                 <div class="line"></div>
             </div>
-            <div class="square">Backend</div>
+            <div class="square-container">
+                <span class="processing-label">1ms</span>
+                <div class="square">Load balancer</div>
+            </div>
+            <div class="line-container">
+                <span class="line-label">1ms</span>
+                <div class="line"></div>
+            </div>
+            <div class="square-container">
+                <span class="processing-label">5ms</span>
+                <div class="square">Backend</div>
+            </div>
             <div class="line-container direct-line-container" id="direct-line">
                 <span class="line-label">10ms</span>
                 <div class="line"></div>
@@ -196,14 +227,20 @@
                     <span class="line-label">2ms</span>
                     <div class="line"></div>
                 </div>
-                <div class="square">Cache</div>
+                <div class="square-container">
+                    <span class="processing-label">&nbsp;</span>
+                    <div class="square">Cache</div>
+                </div>
                 <div class="line-container">
                     <span class="line-label">10ms</span>
                     <div class="line"></div>
                     <span class="line-note">only on cache miss</span>
                 </div>
             </div>
-            <div class="square">Database</div>
+            <div class="square-container">
+                <span class="processing-label">&nbsp;</span>
+                <div class="square">Database</div>
+            </div>
         </div>
 
         <div class="control-panel">
@@ -226,11 +263,11 @@
 
         function updateTotal() {
             if (cacheToggle.checked) {
-                // Cache enabled: 50ms + 2ms = 52ms (hit), 50ms + 2ms + 10ms = 62ms (miss)
-                totalDisplay.innerHTML = 'Total: <span class="total-value">52ms</span> <span class="total-secondary">(hit) / 62ms (miss)</span>';
+                // Cache enabled: 25ms + 1ms + 1ms + 5ms + 2ms = 34ms (hit), + 10ms = 44ms (miss)
+                totalDisplay.innerHTML = 'Total: <span class="total-value">34ms</span> <span class="total-secondary">(hit) / 44ms (miss)</span>';
             } else {
-                // No cache: 50ms + 10ms = 60ms
-                totalDisplay.innerHTML = 'Total: <span class="total-value">60ms</span>';
+                // No cache: 25ms + 1ms + 1ms + 5ms + 10ms = 42ms
+                totalDisplay.innerHTML = 'Total: <span class="total-value">42ms</span>';
             }
         }
 
