@@ -85,6 +85,36 @@
             visibility: visible;
         }
 
+        .autoscale-options {
+            display: none;
+        }
+
+        .autoscale-options.visible {
+            display: flex;
+        }
+
+        .autoscale-indicator {
+            text-align: center;
+            margin-top: 5px;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            font-weight: bold;
+            color: #9b59b6;
+            visibility: hidden;
+        }
+
+        .autoscale-indicator.visible {
+            visibility: visible;
+            animation: fadeInOut 2s ease-in-out;
+        }
+
+        @keyframes fadeInOut {
+            0% { opacity: 0; }
+            20% { opacity: 1; }
+            80% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+
         .line-container {
             display: flex;
             flex-direction: column;
@@ -337,6 +367,9 @@
         <div class="error-display" id="error-display">
             Errors: <span id="error-rate">0%</span> of requests failing
         </div>
+        <div class="autoscale-indicator" id="autoscale-indicator">
+            Auto-scaling: <span id="autoscale-action">scaling up</span>
+        </div>
         <div class="container">
             <div class="square-container">
                 <span class="processing-label">&nbsp;</span>
@@ -437,6 +470,30 @@
                 <input type="range" id="capacity-slider" min="10" max="500" value="100" step="10">
                 <span class="slider-value" id="capacity-value">100 conn</span>
             </div>
+
+            <h3 style="margin-top: 20px;">Auto-scaling</h3>
+            <div class="switch-container">
+                <span class="switch-label">Enable auto-scaling</span>
+                <label class="switch">
+                    <input type="checkbox" id="autoscale-toggle">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <div class="slider-container autoscale-options" id="autoscale-options">
+                <span class="slider-label">Scale-up threshold:</span>
+                <input type="range" id="scaleup-slider" min="50" max="95" value="80" step="5">
+                <span class="slider-value" id="scaleup-value">80%</span>
+            </div>
+            <div class="slider-container autoscale-options">
+                <span class="slider-label">Scale-down threshold:</span>
+                <input type="range" id="scaledown-slider" min="10" max="50" value="30" step="5">
+                <span class="slider-value" id="scaledown-value">30%</span>
+            </div>
+            <div class="slider-container autoscale-options">
+                <span class="slider-label">Max instances:</span>
+                <input type="range" id="max-instances-slider" min="2" max="10" value="5">
+                <span class="slider-value" id="max-instances-value">5</span>
+            </div>
         </div>
     </div>
 
@@ -463,6 +520,18 @@
         const capacityValue = document.getElementById('capacity-value');
         const errorDisplay = document.getElementById('error-display');
         const errorRate = document.getElementById('error-rate');
+
+        // Auto-scaling elements
+        const autoscaleToggle = document.getElementById('autoscale-toggle');
+        const autoscaleOptions = document.querySelectorAll('.autoscale-options');
+        const scaleupSlider = document.getElementById('scaleup-slider');
+        const scaleupValue = document.getElementById('scaleup-value');
+        const scaledownSlider = document.getElementById('scaledown-slider');
+        const scaledownValue = document.getElementById('scaledown-value');
+        const maxInstancesSlider = document.getElementById('max-instances-slider');
+        const maxInstancesValue = document.getElementById('max-instances-value');
+        const autoscaleIndicator = document.getElementById('autoscale-indicator');
+        const autoscaleAction = document.getElementById('autoscale-action');
 
         // Line segment elements
         const browserLbLines = document.getElementById('browser-lb-lines');
@@ -575,9 +644,22 @@
             updateLoad();
         }
 
+        let isAutoScaling = false; // Flag to prevent recursive auto-scaling
+
+        function showAutoScaleIndicator(action) {
+            autoscaleAction.textContent = action;
+            autoscaleIndicator.classList.remove('visible');
+            // Trigger reflow to restart animation
+            void autoscaleIndicator.offsetWidth;
+            autoscaleIndicator.classList.add('visible');
+            setTimeout(() => {
+                autoscaleIndicator.classList.remove('visible');
+            }, 2000);
+        }
+
         function updateLoad() {
             const connections = parseInt(connectionsSlider.value);
-            const instances = parseInt(instancesSlider.value);
+            let instances = parseInt(instancesSlider.value);
             const serverCapacity = parseInt(capacitySlider.value);
 
             // Calculate effective load based on cache status and hit rate
@@ -594,8 +676,36 @@
             }
 
             // Total capacity = server capacity * number of instances
-            const totalCapacity = serverCapacity * instances;
-            const actualLoadPercentage = Math.round((effectiveConnections / totalCapacity) * 100);
+            let totalCapacity = serverCapacity * instances;
+            let actualLoadPercentage = Math.round((effectiveConnections / totalCapacity) * 100);
+
+            // Auto-scaling logic
+            if (autoscaleToggle.checked && !isAutoScaling) {
+                const scaleUpThreshold = parseInt(scaleupSlider.value);
+                const scaleDownThreshold = parseInt(scaledownSlider.value);
+                const maxInstances = parseInt(maxInstancesSlider.value);
+
+                if (actualLoadPercentage > scaleUpThreshold && instances < maxInstances) {
+                    // Scale up
+                    isAutoScaling = true;
+                    const newInstances = Math.min(maxInstances, instances + 1);
+                    instancesSlider.value = newInstances;
+                    updateInstances(newInstances);
+                    showAutoScaleIndicator('Scaling up to ' + newInstances + ' instances');
+                    isAutoScaling = false;
+                    return; // updateInstances will call updateLoad again
+                } else if (actualLoadPercentage < scaleDownThreshold && instances > 1) {
+                    // Scale down
+                    isAutoScaling = true;
+                    const newInstances = instances - 1;
+                    instancesSlider.value = newInstances;
+                    updateInstances(newInstances);
+                    showAutoScaleIndicator('Scaling down to ' + newInstances + ' instances');
+                    isAutoScaling = false;
+                    return; // updateInstances will call updateLoad again
+                }
+            }
+
             const displayLoadPercentage = Math.min(100, actualLoadPercentage);
             const isOverloaded = actualLoadPercentage > 100;
 
@@ -671,6 +781,34 @@
 
         capacitySlider.addEventListener('input', function() {
             updateCapacity(parseInt(this.value));
+        });
+
+        // Auto-scaling event listeners
+        autoscaleToggle.addEventListener('change', function() {
+            if (this.checked) {
+                autoscaleOptions.forEach(opt => opt.classList.add('visible'));
+                instancesSlider.disabled = true;
+                instancesSlider.style.opacity = '0.5';
+            } else {
+                autoscaleOptions.forEach(opt => opt.classList.remove('visible'));
+                instancesSlider.disabled = false;
+                instancesSlider.style.opacity = '1';
+            }
+            updateLoad();
+        });
+
+        scaleupSlider.addEventListener('input', function() {
+            scaleupValue.textContent = this.value + '%';
+            updateLoad();
+        });
+
+        scaledownSlider.addEventListener('input', function() {
+            scaledownValue.textContent = this.value + '%';
+            updateLoad();
+        });
+
+        maxInstancesSlider.addEventListener('input', function() {
+            maxInstancesValue.textContent = this.value;
         });
 
         // Initialize
