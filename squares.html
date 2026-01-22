@@ -545,13 +545,48 @@
         const directDbLines = document.getElementById('direct-db-lines');
         const directDbCount = document.getElementById('direct-db-count');
 
-        function updateTotal() {
-            if (cacheToggle.checked) {
-                // Cache enabled: 25ms + 1ms + 1ms + 5ms + 2ms = 34ms (hit), + 10ms = 44ms (miss)
-                totalDisplay.innerHTML = 'Total: <span class="total-value">34ms</span> <span class="total-secondary">(hit) / 44ms (miss)</span>';
+        function calculateDegradedLatency(baseLatency, loadPercentage) {
+            // Response time degradation model:
+            // - Below 50% load: normal latency
+            // - 50-80% load: latency increases 1x to 2x
+            // - 80-100% load: latency increases 2x to 5x
+            // - Above 100%: TIMEOUT (handled separately)
+
+            if (loadPercentage <= 50) {
+                return baseLatency;
+            } else if (loadPercentage <= 80) {
+                // Linear increase from 1x to 2x between 50-80%
+                const factor = 1 + ((loadPercentage - 50) / 30);
+                return Math.round(baseLatency * factor);
             } else {
-                // No cache: 25ms + 1ms + 1ms + 5ms + 10ms = 42ms
-                totalDisplay.innerHTML = 'Total: <span class="total-value">42ms</span>';
+                // Exponential increase from 2x to 5x between 80-100%
+                const factor = 2 + ((loadPercentage - 80) / 20) * 3;
+                return Math.round(baseLatency * factor);
+            }
+        }
+
+        function getLatencyColor(loadPercentage) {
+            if (loadPercentage <= 50) {
+                return '#27ae60'; // Green
+            } else if (loadPercentage <= 80) {
+                return '#f39c12'; // Yellow/Orange
+            } else {
+                return '#e74c3c'; // Red
+            }
+        }
+
+        function updateTotal(loadPercentage = 0) {
+            const color = getLatencyColor(loadPercentage);
+
+            if (cacheToggle.checked) {
+                // Base latencies: 34ms (hit), 44ms (miss)
+                const hitLatency = calculateDegradedLatency(34, loadPercentage);
+                const missLatency = calculateDegradedLatency(44, loadPercentage);
+                totalDisplay.innerHTML = `Total: <span class="total-value" style="color: ${color};">${hitLatency}ms</span> <span class="total-secondary">(hit) / ${missLatency}ms (miss)</span>`;
+            } else {
+                // Base latency: 42ms
+                const latency = calculateDegradedLatency(42, loadPercentage);
+                totalDisplay.innerHTML = `Total: <span class="total-value" style="color: ${color};">${latency}ms</span>`;
             }
         }
 
@@ -739,8 +774,8 @@
                 // Hide error display
                 errorDisplay.classList.remove('visible');
 
-                // Restore normal total display
-                updateTotal();
+                // Update total display with degraded response time
+                updateTotal(actualLoadPercentage);
             }
 
             // Update load meter color based on percentage
@@ -763,8 +798,7 @@
                 directLine.classList.add('visible');
                 cacheHitRateContainer.style.display = 'none';
             }
-            updateTotal();
-            updateLoad();
+            updateConnections(parseInt(connectionsSlider.value));
         });
 
         connectionsSlider.addEventListener('input', function() {
