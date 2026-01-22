@@ -489,10 +489,12 @@
             let totalLoad;
             if (cacheToggle.checked) {
                 const cacheHitRate = parseInt(cacheHitRateSlider.value) / 100;
-                // Higher cache hit rate = lower backend load
-                totalLoad = connections * (1 - cacheHitRate * 0.7);
+                // Cache hits = 20% load (light), cache misses = 100% load (heavy, needs DB)
+                // Formula: connections * (cacheHitRate * 0.2 + (1 - cacheHitRate) * 1.0)
+                // Simplified: connections * (1 - 0.8 * cacheHitRate)
+                totalLoad = connections * (1 - 0.8 * cacheHitRate);
             } else {
-                // No cache: full load
+                // No cache: every request hits DB, full load
                 totalLoad = connections;
             }
 
