@@ -190,6 +190,80 @@
         .direct-line-container.visible {
             display: flex;
         }
+
+        /* Load meter styles */
+        .load-meter {
+            width: 100px;
+            height: 8px;
+            background-color: #ecf0f1;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 5px;
+            border: 1px solid #bdc3c7;
+        }
+
+        .load-meter-fill {
+            height: 100%;
+            width: 0%;
+            background-color: #27ae60;
+            transition: width 0.3s, background-color 0.3s;
+        }
+
+        .load-meter-label {
+            font-family: Arial, sans-serif;
+            font-size: 10px;
+            color: #7f8c8d;
+            margin-bottom: 3px;
+        }
+
+        /* Multi-line styles */
+        .multi-line-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 50px;
+            position: relative;
+        }
+
+        .lines-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .connection-count {
+            font-family: Arial, sans-serif;
+            font-size: 10px;
+            color: #e74c3c;
+            margin-top: 3px;
+            font-weight: bold;
+        }
+
+        /* Slider styles */
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .slider-label {
+            font-size: 14px;
+            color: #34495e;
+            min-width: 140px;
+        }
+
+        .slider-value {
+            font-size: 14px;
+            color: #e74c3c;
+            font-weight: bold;
+            min-width: 30px;
+        }
+
+        input[type="range"] {
+            width: 150px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -210,11 +284,18 @@
                 <span class="processing-label">1ms</span>
                 <div class="square">Load balancer</div>
             </div>
-            <div class="line-container">
+            <div class="multi-line-container" id="lb-backend-line">
                 <span class="line-label">1ms</span>
-                <div class="line"></div>
+                <div class="lines-wrapper" id="lines-wrapper">
+                    <div class="line"></div>
+                </div>
+                <span class="connection-count" id="connection-count">1 conn</span>
             </div>
-            <div class="square-container">
+            <div class="square-container" id="backend-container">
+                <span class="load-meter-label">Load: <span id="load-percent">1%</span></span>
+                <div class="load-meter">
+                    <div class="load-meter-fill" id="load-meter-fill"></div>
+                </div>
                 <span class="processing-label">5ms</span>
                 <div class="square">Backend</div>
             </div>
@@ -227,7 +308,11 @@
                     <span class="line-label">2ms</span>
                     <div class="line"></div>
                 </div>
-                <div class="square-container">
+                <div class="square-container" id="cache-container">
+                    <span class="load-meter-label">Hit rate: <span id="cache-hit-rate">80%</span></span>
+                    <div class="load-meter cache-meter">
+                        <div class="load-meter-fill cache-meter-fill" id="cache-meter-fill"></div>
+                    </div>
                     <span class="processing-label">&nbsp;</span>
                     <div class="square">Cache</div>
                 </div>
@@ -252,6 +337,16 @@
                     <span class="slider"></span>
                 </label>
             </div>
+            <div class="slider-container">
+                <span class="slider-label">Concurrent connections:</span>
+                <input type="range" id="connections-slider" min="1" max="100" value="1">
+                <span class="slider-value" id="connections-value">1</span>
+            </div>
+            <div class="slider-container" id="cache-hit-rate-container">
+                <span class="slider-label">Cache hit rate:</span>
+                <input type="range" id="cache-hit-rate-slider" min="0" max="100" value="80">
+                <span class="slider-value" id="cache-hit-rate-value">80%</span>
+            </div>
         </div>
     </div>
 
@@ -260,6 +355,17 @@
         const cacheGroup = document.getElementById('cache-group');
         const directLine = document.getElementById('direct-line');
         const totalDisplay = document.getElementById('total-display');
+        const connectionsSlider = document.getElementById('connections-slider');
+        const connectionsValue = document.getElementById('connections-value');
+        const linesWrapper = document.getElementById('lines-wrapper');
+        const connectionCount = document.getElementById('connection-count');
+        const loadMeterFill = document.getElementById('load-meter-fill');
+        const loadPercent = document.getElementById('load-percent');
+        const cacheHitRateSlider = document.getElementById('cache-hit-rate-slider');
+        const cacheHitRateValue = document.getElementById('cache-hit-rate-value');
+        const cacheHitRateDisplay = document.getElementById('cache-hit-rate');
+        const cacheMeterFill = document.getElementById('cache-meter-fill');
+        const cacheHitRateContainer = document.getElementById('cache-hit-rate-container');
 
         function updateTotal() {
             if (cacheToggle.checked) {
@@ -271,16 +377,88 @@
             }
         }
 
+        function updateCacheHitRate(rate) {
+            cacheHitRateValue.textContent = rate + '%';
+            cacheHitRateDisplay.textContent = rate + '%';
+            cacheMeterFill.style.width = rate + '%';
+
+            // Color based on hit rate (higher is better)
+            if (rate >= 70) {
+                cacheMeterFill.style.backgroundColor = '#27ae60'; // Green
+            } else if (rate >= 40) {
+                cacheMeterFill.style.backgroundColor = '#f39c12'; // Yellow/Orange
+            } else {
+                cacheMeterFill.style.backgroundColor = '#e74c3c'; // Red
+            }
+
+            // Recalculate backend load
+            updateConnections(parseInt(connectionsSlider.value));
+        }
+
+        function updateConnections(count) {
+            // Update the displayed value
+            connectionsValue.textContent = count;
+            connectionCount.textContent = count + ' conn';
+
+            // Update the lines (show up to 5 visual lines)
+            const visualLines = Math.min(Math.ceil(count / 20), 5);
+            linesWrapper.innerHTML = '';
+            for (let i = 0; i < visualLines; i++) {
+                const line = document.createElement('div');
+                line.className = 'line';
+                linesWrapper.appendChild(line);
+            }
+
+            // Calculate load based on cache status and hit rate
+            let loadPercentage;
+            if (cacheToggle.checked) {
+                const cacheHitRate = parseInt(cacheHitRateSlider.value) / 100;
+                // Higher cache hit rate = lower backend load
+                loadPercentage = Math.min(100, count * (1 - cacheHitRate * 0.7));
+            } else {
+                // No cache: full load
+                loadPercentage = count;
+            }
+
+            loadPercentage = Math.round(loadPercentage);
+            loadMeterFill.style.width = loadPercentage + '%';
+            loadPercent.textContent = loadPercentage + '%';
+
+            // Update load meter color based on percentage
+            if (loadPercentage < 50) {
+                loadMeterFill.style.backgroundColor = '#27ae60'; // Green
+            } else if (loadPercentage < 80) {
+                loadMeterFill.style.backgroundColor = '#f39c12'; // Yellow/Orange
+            } else {
+                loadMeterFill.style.backgroundColor = '#e74c3c'; // Red
+            }
+        }
+
         cacheToggle.addEventListener('change', function() {
             if (this.checked) {
                 cacheGroup.classList.remove('hidden');
                 directLine.classList.remove('visible');
+                cacheHitRateContainer.style.display = 'flex';
             } else {
                 cacheGroup.classList.add('hidden');
                 directLine.classList.add('visible');
+                cacheHitRateContainer.style.display = 'none';
             }
             updateTotal();
+            updateConnections(parseInt(connectionsSlider.value));
         });
+
+        connectionsSlider.addEventListener('input', function() {
+            updateConnections(parseInt(this.value));
+        });
+
+        cacheHitRateSlider.addEventListener('input', function() {
+            updateCacheHitRate(parseInt(this.value));
+        });
+
+        // Initialize
+        updateConnections(1);
+        updateCacheHitRate(80);
     </script>
 </body>
 </html>
